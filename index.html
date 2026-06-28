@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<title>七年級下 第三次段考 數學練習系統</title>
+<style>
+  :root{
+    --bg:#f1f5f9; --card:#ffffff; --ink:#1e293b; --muted:#64748b; --line:#e2e8f0;
+    --brand:#1d4ed8; --brand-dark:#1e3a8a; --brand-soft:#eff6ff;
+    --ok:#16a34a; --ok-soft:#f0fdf4; --bad:#dc2626; --bad-soft:#fef2f2;
+    --warn:#d97706; --shadow:0 1px 3px rgba(15,23,42,.08),0 8px 24px rgba(15,23,42,.06);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:"Segoe UI","Microsoft JhengHei","PingFang TC","Noto Sans TC",system-ui,sans-serif;
+    background:var(--bg); color:var(--ink); line-height:1.7; -webkit-text-size-adjust:100%;}
+  .wrap{max-width:860px; margin:0 auto; padding:18px 16px 80px;}
+
+  header.app{background:linear-gradient(135deg,var(--brand-dark),var(--brand)); color:#fff;
+    border-radius:16px; padding:20px 22px; box-shadow:var(--shadow); margin-bottom:18px;}
+  header.app h1{margin:0 0 4px; font-size:1.32rem; letter-spacing:.3px;}
+  header.app p{margin:0; opacity:.92; font-size:.9rem;}
+  .scope{display:flex; flex-wrap:wrap; gap:8px; margin-top:12px;}
+  .scope span{background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.25);
+    padding:3px 10px; border-radius:999px; font-size:.78rem;}
+
+  .toolbar{display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:16px;}
+  button{font-family:inherit; cursor:pointer; border:none; border-radius:10px; font-size:.95rem;
+    padding:10px 18px; transition:.15s; font-weight:600;}
+  .btn-primary{background:var(--brand); color:#fff;}
+  .btn-primary:hover{background:var(--brand-dark);}
+  .btn-ghost{background:#fff; color:var(--brand); border:1.5px solid var(--brand);}
+  .btn-ghost:hover{background:var(--brand-soft);}
+  button:disabled{opacity:.45; cursor:not-allowed;}
+  .spacer{flex:1}
+  .stat{font-size:.85rem; color:var(--muted);}
+
+  .progressbar{height:6px; background:var(--line); border-radius:99px; overflow:hidden; margin-bottom:18px;}
+  .progressbar i{display:block; height:100%; width:0; background:var(--brand); transition:width .3s;}
+
+  .q{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px;
+    margin-bottom:14px; box-shadow:var(--shadow); scroll-margin-top:12px;}
+  .q .head{display:flex; align-items:flex-start; gap:10px; margin-bottom:10px;}
+  .qno{flex:none; width:30px; height:30px; border-radius:8px; background:var(--brand-soft);
+    color:var(--brand); font-weight:700; display:flex; align-items:center; justify-content:center; font-size:.9rem;}
+  .topic-tag{font-size:.72rem; color:var(--muted); border:1px solid var(--line); border-radius:6px;
+    padding:1px 8px; align-self:center;}
+  .stem{white-space:pre-wrap; font-size:1.02rem; margin:2px 0 10px;}
+  .figure{margin:6px 0 12px; padding:10px; background:#fafcff; border:1px dashed var(--line);
+    border-radius:10px; display:inline-block;}
+  .figure svg{vertical-align:middle;}
+
+  .opts{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  @media(max-width:560px){ .opts{grid-template-columns:1fr;} }
+  .opt{display:flex; align-items:center; gap:10px; border:1.5px solid var(--line); border-radius:10px;
+    padding:9px 12px; cursor:pointer; transition:.12s; background:#fff; min-height:46px;}
+  .opt:hover{border-color:var(--brand); background:var(--brand-soft);}
+  .opt .k{flex:none; width:24px; height:24px; border-radius:50%; border:1.5px solid var(--muted);
+    color:var(--muted); font-size:.82rem; font-weight:700; display:flex; align-items:center; justify-content:center;}
+  .opt .v{font-size:.98rem;}
+  .opt .v svg{vertical-align:middle;}
+  .opt.sel{border-color:var(--brand); background:var(--brand-soft);}
+  .opt.sel .k{background:var(--brand); color:#fff; border-color:var(--brand);}
+  /* 批改後 */
+  .opt.correct{border-color:var(--ok); background:var(--ok-soft);}
+  .opt.correct .k{background:var(--ok); color:#fff; border-color:var(--ok);}
+  .opt.wrong{border-color:var(--bad); background:var(--bad-soft);}
+  .opt.wrong .k{background:var(--bad); color:#fff; border-color:var(--bad);}
+  .graded .opt{cursor:default;}
+
+  .sol{margin-top:12px; border-top:1px dashed var(--line); padding-top:10px; display:none;}
+  .graded .sol{display:block;}
+  .sol .badge{display:inline-block; font-size:.78rem; font-weight:700; padding:2px 10px; border-radius:6px; margin-bottom:6px;}
+  .badge.r{background:var(--ok-soft); color:var(--ok);}
+  .badge.w{background:var(--bad-soft); color:var(--bad);}
+  .badge.n{background:#f1f5f9; color:var(--muted);}
+  .sol .txt{white-space:pre-wrap; font-size:.92rem; color:#334155; background:#f8fafc;
+    border-radius:8px; padding:10px 12px;}
+
+  /* 結果面板 */
+  .result{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:22px;
+    box-shadow:var(--shadow); margin-bottom:18px; text-align:center; display:none;}
+  .result.show{display:block;}
+  .score{font-size:2.6rem; font-weight:800; color:var(--brand);}
+  .score small{font-size:1rem; color:var(--muted); font-weight:600;}
+  .grade-line{font-size:1.05rem; margin:6px 0 14px; font-weight:600;}
+  .bytopic{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-top:10px;}
+  .tt{border:1px solid var(--line); border-radius:10px; padding:10px;}
+  .tt b{display:block; font-size:.82rem; color:var(--muted); font-weight:600;}
+  .tt .n{font-size:1.4rem; font-weight:800;}
+
+  .float{position:fixed; left:0; right:0; bottom:0; background:#ffffff;
+    border-top:1px solid var(--line); box-shadow:0 -2px 12px rgba(15,23,42,.06); padding:10px 16px; display:flex;
+    align-items:center; gap:12px; justify-content:center; z-index:20;}
+  .float .info{font-size:.85rem; color:var(--muted);}
+  footer{text-align:center; color:var(--muted); font-size:.78rem; margin-top:26px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="app">
+    <h1>📐 七年級下學期・第三次段考 數學練習</h1>
+    <p>每次自動產生 20 題選擇題 ・ 難度：班排前段（挑戰級）・ 自動批改＋詳解</p>
+    <div class="scope">
+      <span>一元一次不等式</span><span>統計（平均·中位·眾數）</span><span>幾何圖形</span><span>線對稱與三視圖</span>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <button class="btn-primary" id="btnNew">🔄 出一份新試卷</button>
+    <button class="btn-ghost" id="btnSubmit">✅ 交卷批改</button>
+    <div class="spacer"></div>
+    <div class="stat" id="stat">已作答 0 / 20</div>
+  </div>
+  <div class="progressbar"><i id="prog"></i></div>
+
+  <div class="result" id="result"></div>
+  <div id="quiz"></div>
+
+  <footer>每一題的答案皆由程式即時運算產生並驗證正確。可無限次重新出題。<br>建議用紙筆計算後再作答，訓練實戰手感。</footer>
+</div>
+
+<div class="float">
+  <button class="btn-ghost" id="btnSubmit2">交卷批改</button>
+  <span class="info" id="floatInfo">作答中…</span>
+  <button class="btn-primary" id="btnNew2">再出一份</button>
+</div>
+
+<script src="generators.js"></script>
+<script>
+(function(){
+  const quiz = document.getElementById('quiz');
+  const result = document.getElementById('result');
+  let test = [];
+  let answers = [];   // 使用者選的索引
+  let graded = false;
+
+  function isSvg(s){ return typeof s==='string' && s.trim().startsWith('<svg'); }
+  function setOpt(span, str){ if(isSvg(str)) span.innerHTML = str; else span.textContent = str; }
+
+  function render(){
+    quiz.innerHTML = '';
+    result.classList.remove('show');
+    const KEYS=['A','B','C','D'];
+    test.forEach((q, i)=>{
+      const card = document.createElement('div');
+      card.className = 'q'; card.id = 'q'+i;
+      const head = document.createElement('div'); head.className='head';
+      head.innerHTML = '<div class="qno">'+(i+1)+'</div>'+
+        '<div style="flex:1"></div><div class="topic-tag">'+q.topicLabel+'</div>';
+      card.appendChild(head);
+
+      if(q.stem){ const stem=document.createElement('div'); stem.className='stem'; stem.textContent=q.stem; card.appendChild(stem); }
+      if(q.svg){ const fig=document.createElement('div'); fig.className='figure'; fig.innerHTML=q.svg; card.appendChild(fig); }
+
+      const opts=document.createElement('div'); opts.className='opts';
+      q.options.forEach((optStr, oi)=>{
+        const o=document.createElement('div'); o.className='opt'; o.dataset.qi=i; o.dataset.oi=oi;
+        const k=document.createElement('div'); k.className='k'; k.textContent=KEYS[oi];
+        const v=document.createElement('div'); v.className='v'; setOpt(v, optStr);
+        o.appendChild(k); o.appendChild(v);
+        o.addEventListener('click', ()=>{ if(graded) return; select(i, oi); });
+        opts.appendChild(o);
+      });
+      card.appendChild(opts);
+
+      const sol=document.createElement('div'); sol.className='sol';
+      sol.innerHTML='<span class="badge n">詳解</span><div class="txt"></div>';
+      sol.querySelector('.txt').textContent=q.solution||'';
+      card.appendChild(sol);
+
+      quiz.appendChild(card);
+    });
+    updateStat();
+  }
+
+  function select(qi, oi){
+    answers[qi]=oi;
+    const card=document.getElementById('q'+qi);
+    card.querySelectorAll('.opt').forEach(o=>o.classList.toggle('sel', Number(o.dataset.oi)===oi));
+    updateStat();
+  }
+
+  function updateStat(){
+    const done=answers.filter(a=>a!=null).length;
+    document.getElementById('stat').textContent='已作答 '+done+' / 20';
+    document.getElementById('prog').style.width=(done/20*100)+'%';
+    document.getElementById('floatInfo').textContent= graded? '已批改' : ('作答中… '+done+'/20');
+  }
+
+  function grade(){
+    if(graded) return;
+    const unanswered = answers.reduce((a,v,i)=> v==null?a.concat(i+1):a, []);
+    if(unanswered.length){
+      if(!confirm('還有 '+unanswered.length+' 題未作答（第 '+unanswered.join('、')+' 題）。\n確定要交卷嗎？未作答的題目將算錯。')) return;
+    }
+    graded=true;
+    let correctCount=0;
+    const byTopic={};
+    test.forEach((q,i)=>{
+      const card=document.getElementById('q'+i); card.classList.add('graded');
+      const sel=answers[i];
+      const right=q.answer;
+      const isRight = sel===right;
+      if(isRight) correctCount++;
+      byTopic[q.topicLabel]=byTopic[q.topicLabel]||{c:0,t:0};
+      byTopic[q.topicLabel].t++; if(isRight) byTopic[q.topicLabel].c++;
+      card.querySelectorAll('.opt').forEach(o=>{
+        const oi=Number(o.dataset.oi);
+        if(oi===right) o.classList.add('correct');
+        if(oi===sel && sel!==right) o.classList.add('wrong');
+      });
+      const badge=card.querySelector('.sol .badge');
+      if(isRight){ badge.className='badge r'; badge.textContent='✓ 答對'; }
+      else if(sel==null){ badge.className='badge n'; badge.textContent='— 未作答（正解見下）'; }
+      else { badge.className='badge w'; badge.textContent='✗ 答錯（你選 '+['A','B','C','D'][sel]+'）'; }
+    });
+    showResult(correctCount, byTopic);
+    updateStat();
+    document.getElementById('btnSubmit').disabled=true;
+    document.getElementById('btnSubmit2').disabled=true;
+    result.scrollIntoView({behavior:'smooth', block:'start'});
+  }
+
+  function showResult(correct, byTopic){
+    const pct=Math.round(correct/20*100);
+    let grade, color;
+    if(pct>=90){ grade='🏆 頂尖！校排前段穩了'; }
+    else if(pct>=80){ grade='🌟 很強！再補幾個觀念就滿分'; }
+    else if(pct>=70){ grade='👍 不錯，挑出錯題訂正一下'; }
+    else if(pct>=60){ grade='💪 及格邊緣，弱項要加強'; }
+    else { grade='📖 還有進步空間，先把詳解看懂'; }
+    let tiles='';
+    Object.keys(byTopic).forEach(t=>{
+      const o=byTopic[t]; const p=Math.round(o.c/o.t*100);
+      const col = p>=80?'var(--ok)': p>=60?'var(--warn)':'var(--bad)';
+      tiles+='<div class="tt"><b>'+t+'</b><span class="n" style="color:'+col+'">'+o.c+'/'+o.t+'</span></div>';
+    });
+    result.innerHTML =
+      '<div class="score">'+correct+'<small> / 20 　('+pct+'分)</small></div>'+
+      '<div class="grade-line">'+grade+'</div>'+
+      '<div class="bytopic">'+tiles+'</div>'+
+      '<div style="margin-top:16px"><button class="btn-primary" onclick="window.__newTest()">再出一份新試卷 →</button></div>';
+    result.classList.add('show');
+  }
+
+  function newTest(){
+    test = MathGen.genTest();
+    answers = new Array(test.length).fill(null);
+    graded = false;
+    document.getElementById('btnSubmit').disabled=false;
+    document.getElementById('btnSubmit2').disabled=false;
+    render();
+    window.scrollTo({top:0, behavior:'smooth'});
+  }
+  window.__newTest = newTest;
+
+  document.getElementById('btnNew').addEventListener('click', newTest);
+  document.getElementById('btnNew2').addEventListener('click', newTest);
+  document.getElementById('btnSubmit').addEventListener('click', grade);
+  document.getElementById('btnSubmit2').addEventListener('click', grade);
+
+  newTest();
+})();
+</script>
+</body>
+</html>

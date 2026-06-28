@@ -1,0 +1,8 @@
+# 產生的範例檔（可由 dump_samples.js 重新產生）
+samples.txt
+
+# 相依套件 / 系統檔
+node_modules/
+.DS_Store
+Thumbs.db
+*.log
