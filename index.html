@@ -94,6 +94,14 @@
     border-top:1px solid var(--line); box-shadow:0 -2px 12px rgba(15,23,42,.06); padding:10px 16px; display:flex;
     align-items:center; gap:12px; justify-content:center; z-index:20;}
   .float .info{font-size:.85rem; color:var(--muted);}
+  .timer{display:inline-flex; align-items:center; gap:5px; font-weight:700; color:var(--brand);
+    background:var(--brand-soft); border:1px solid #dbeafe; padding:5px 12px; border-radius:999px;
+    font-size:.92rem; font-variant-numeric:tabular-nums;}
+  .timer.over{color:var(--warn); background:#fff7ed; border-color:#fed7aa;}
+  .timer.done{color:var(--ok); background:var(--ok-soft); border-color:#bbf7d0;}
+  .timer-val{font-variant-numeric:tabular-nums; letter-spacing:.5px;}
+  .time-line{font-size:.95rem; color:var(--muted); margin-top:6px;}
+  .time-line b{color:var(--ink);}
   footer{text-align:center; color:var(--muted); font-size:.78rem; margin-top:26px;}
 </style>
 </head>
@@ -111,6 +119,7 @@
     <button class="btn-primary" id="btnNew">🔄 出一份新試卷</button>
     <button class="btn-ghost" id="btnSubmit">✅ 交卷批改</button>
     <div class="spacer"></div>
+    <div class="timer" id="timerTop" title="作答時間（超過 45 分鐘會變色提醒）">⏱ <span class="timer-val">00:00</span></div>
     <div class="stat" id="stat">已作答 0 / 20</div>
   </div>
   <div class="progressbar"><i id="prog"></i></div>
@@ -123,6 +132,7 @@
 
 <div class="float">
   <button class="btn-ghost" id="btnSubmit2">交卷批改</button>
+  <span class="timer" id="timerFloat">⏱ <span class="timer-val">00:00</span></span>
   <span class="info" id="floatInfo">作答中…</span>
   <button class="btn-primary" id="btnNew2">再出一份</button>
 </div>
@@ -135,6 +145,32 @@
   let test = [];
   let answers = [];   // 使用者選的索引
   let graded = false;
+
+  // ===== 計時器（碼錶）=====
+  const LIMIT_SEC = 45 * 60;       // 一般段考時長 45 分，超過變橘色提醒
+  let timerStartMs = 0, elapsedSec = 0, timerId = null;
+  function fmtTime(sec){
+    sec = Math.max(0, Math.floor(sec));
+    const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = sec%60;
+    const p = n => String(n).padStart(2,'0');
+    return h ? h + ':' + p(m) + ':' + p(s) : p(m) + ':' + p(s);
+  }
+  function renderTimer(){
+    document.querySelectorAll('.timer-val').forEach(e => e.textContent = fmtTime(elapsedSec));
+    document.querySelectorAll('.timer').forEach(e => e.classList.toggle('over', !graded && elapsedSec >= LIMIT_SEC));
+  }
+  function startTimer(){
+    clearInterval(timerId);
+    elapsedSec = 0; timerStartMs = Date.now();
+    document.querySelectorAll('.timer').forEach(e => e.classList.remove('done'));
+    renderTimer();
+    timerId = setInterval(() => { elapsedSec = (Date.now() - timerStartMs) / 1000; renderTimer(); }, 1000);
+  }
+  function stopTimer(){
+    if (timerId){ elapsedSec = (Date.now() - timerStartMs) / 1000; clearInterval(timerId); timerId = null; }
+    document.querySelectorAll('.timer').forEach(e => { e.classList.remove('over'); e.classList.add('done'); });
+    renderTimer();
+  }
 
   function isSvg(s){ return typeof s==='string' && s.trim().startsWith('<svg'); }
   function setOpt(span, str){ if(isSvg(str)) span.innerHTML = str; else span.textContent = str; }
@@ -196,6 +232,7 @@
       if(!confirm('還有 '+unanswered.length+' 題未作答（第 '+unanswered.join('、')+' 題）。\n確定要交卷嗎？未作答的題目將算錯。')) return;
     }
     graded=true;
+    stopTimer();
     let correctCount=0;
     const byTopic={};
     test.forEach((q,i)=>{
@@ -216,14 +253,14 @@
       else if(sel==null){ badge.className='badge n'; badge.textContent='— 未作答（正解見下）'; }
       else { badge.className='badge w'; badge.textContent='✗ 答錯（你選 '+['A','B','C','D'][sel]+'）'; }
     });
-    showResult(correctCount, byTopic);
+    showResult(correctCount, byTopic, elapsedSec);
     updateStat();
     document.getElementById('btnSubmit').disabled=true;
     document.getElementById('btnSubmit2').disabled=true;
     result.scrollIntoView({behavior:'smooth', block:'start'});
   }
 
-  function showResult(correct, byTopic){
+  function showResult(correct, byTopic, elapsed){
     const pct=Math.round(correct/20*100);
     let grade, color;
     if(pct>=90){ grade='🏆 頂尖！校排前段穩了'; }
@@ -237,9 +274,13 @@
       const col = p>=80?'var(--ok)': p>=60?'var(--warn)':'var(--bad)';
       tiles+='<div class="tt"><b>'+t+'</b><span class="n" style="color:'+col+'">'+o.c+'/'+o.t+'</span></div>';
     });
+    const secs=Math.floor(elapsed||0);
+    const perQ=Math.round(secs/20);
+    const overNote = secs>LIMIT_SEC ? '（超過 45 分鐘，建議加快解題速度）' : (secs<=20*60 && pct>=80 ? '（又快又準！）' : '');
     result.innerHTML =
       '<div class="score">'+correct+'<small> / 20 　('+pct+'分)</small></div>'+
       '<div class="grade-line">'+grade+'</div>'+
+      '<div class="time-line">⏱ 作答時間 <b>'+fmtTime(secs)+'</b>　平均每題 <b>'+perQ+'</b> 秒 '+overNote+'</div>'+
       '<div class="bytopic">'+tiles+'</div>'+
       '<div style="margin-top:16px"><button class="btn-primary" onclick="window.__newTest()">再出一份新試卷 →</button></div>';
     result.classList.add('show');
@@ -258,6 +299,7 @@
     document.getElementById('btnSubmit').disabled=false;
     document.getElementById('btnSubmit2').disabled=false;
     render();
+    startTimer();
     window.scrollTo({top:0, behavior:'smooth'});
   }
   window.__newTest = newTest;
