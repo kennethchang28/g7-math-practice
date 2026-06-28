@@ -199,19 +199,23 @@
   function isSvg(s){ return typeof s==='string' && s.trim().startsWith('<svg'); }
   function setOpt(span, str){ if(isSvg(str)) span.innerHTML = str; else span.textContent = str; }
 
-  // ===== 手寫計算區（支援觸控筆/手指/滑鼠，含筆壓）=====
+  // ===== 手寫計算區（觸控筆/手指/滑鼠，含筆壓、復原/重做；預設展開）=====
   let penOnlyMode = false;
   function buildScratch(){
     const wrap = document.createElement('div'); wrap.className = 'scratch-wrap';
     const toggle = document.createElement('button'); toggle.type='button';
-    toggle.className = 'scratch-toggle'; toggle.textContent = '✏️ 計算區（手寫）';
-    const pad = document.createElement('div'); pad.className = 'scratch'; pad.style.display = 'none';
+    toggle.className = 'scratch-toggle'; toggle.textContent = '✏️ 收合計算區';
+
+    const pad = document.createElement('div'); pad.className = 'scratch'; pad.style.display = 'block'; // 預設展開
 
     const tools = document.createElement('div'); tools.className = 'scratch-tools';
     const penBtn = document.createElement('button'); penBtn.type='button'; penBtn.className='stool active'; penBtn.textContent='✏️ 筆';
     const eraBtn = document.createElement('button'); eraBtn.type='button'; eraBtn.className='stool'; eraBtn.textContent='🧹 橡皮擦';
+    const undoBtn = document.createElement('button'); undoBtn.type='button'; undoBtn.className='stool'; undoBtn.textContent='↩ 復原';
+    const redoBtn = document.createElement('button'); redoBtn.type='button'; redoBtn.className='stool'; redoBtn.textContent='↪ 重做';
     const clearBtn = document.createElement('button'); clearBtn.type='button'; clearBtn.className='sclear'; clearBtn.textContent='🗑 清除';
     tools.appendChild(penBtn); tools.appendChild(eraBtn);
+    tools.appendChild(undoBtn); tools.appendChild(redoBtn);
     const colors = ['#1e293b', '#1d4ed8', '#dc2626'];
     const swatches = colors.map((c, idx)=>{ const s=document.createElement('button'); s.type='button'; s.className='swatch'+(idx===0?' active':''); s.style.background=c; s.dataset.color=c; tools.appendChild(s); return s; });
     tools.appendChild(clearBtn);
@@ -220,7 +224,9 @@
     pad.appendChild(tools); pad.appendChild(canvas);
     wrap.appendChild(toggle); wrap.appendChild(pad);
 
-    const state = { tool:'pen', color:colors[0], inited:false, ctx:null, drawing:false, last:null };
+    // strokes：已完成筆畫(向量)；history：每次動作後的 strokes 快照(用於復原/重做)
+    const state = { tool:'pen', color:colors[0], inited:false, ctx:null, drawing:false,
+      strokes:[], cur:null, history:[[]], hp:0 };
 
     function initCanvas(){
       if(state.inited) return;
@@ -234,25 +240,62 @@
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       state.ctx = ctx; state.inited = true;
     }
+    function widthFor(tool, pr){ return tool==='eraser' ? 16 : (1.4 + (pr||0.5)*3.2); }
+    function applyStyle(tool, color){
+      const ctx = state.ctx;
+      if(tool==='eraser'){ ctx.globalCompositeOperation='destination-out'; }
+      else { ctx.globalCompositeOperation='source-over'; ctx.strokeStyle = color; }
+    }
+    function seg(a, b, tool, color, pr){
+      const ctx = state.ctx; applyStyle(tool, color); ctx.lineWidth = widthFor(tool, pr);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+    function drawStroke(st){
+      const pts = st.pts;
+      if(pts.length === 1){ seg(pts[0], {x:pts[0].x+0.01, y:pts[0].y}, st.tool, st.color, pts[0].pr); return; }
+      for(let i=1;i<pts.length;i++) seg(pts[i-1], pts[i], st.tool, st.color, pts[i].pr);
+    }
+    function redraw(){
+      if(!state.ctx) return; const ctx=state.ctx;
+      ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,canvas.width,canvas.height); ctx.restore();
+      state.strokes.forEach(drawStroke);
+    }
+    function commit(){
+      state.history = state.history.slice(0, state.hp+1);
+      state.history.push(state.strokes.slice());
+      state.hp = state.history.length - 1;
+      if(state.history.length > 80){ state.history.shift(); state.hp--; }
+      updateUR();
+    }
+    function updateUR(){ undoBtn.disabled = state.hp<=0; redoBtn.disabled = state.hp>=state.history.length-1; }
+
     function pos(e){ const r = canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
     function down(e){
       if(penOnlyMode && e.pointerType === 'touch') return;       // 防手掌/手指誤觸
       initCanvas();
-      state.drawing = true; state.last = pos(e);
+      state.drawing = true;
+      const p = pos(e); const pr = (e.pressure && e.pressure>0) ? e.pressure : 0.5;
+      state.cur = { tool:state.tool, color:state.color, pts:[{x:p.x, y:p.y, pr}] };
+      seg(p, {x:p.x+0.01, y:p.y}, state.tool, state.color, pr);   // 點一下也留下點
       try{ canvas.setPointerCapture(e.pointerId); }catch(_){}
       e.preventDefault();
     }
     function move(e){
       if(!state.drawing) return;
       if(penOnlyMode && e.pointerType === 'touch') return;
-      const p = pos(e); const ctx = state.ctx;
-      const pressure = (e.pressure && e.pressure>0) ? e.pressure : 0.5;
-      if(state.tool === 'eraser'){ ctx.globalCompositeOperation='destination-out'; ctx.lineWidth = 16; }
-      else { ctx.globalCompositeOperation='source-over'; ctx.strokeStyle = state.color; ctx.lineWidth = 1.4 + pressure*3.2; }
-      ctx.beginPath(); ctx.moveTo(state.last.x, state.last.y); ctx.lineTo(p.x, p.y); ctx.stroke();
-      state.last = p; e.preventDefault();
+      const p = pos(e); const pr = (e.pressure && e.pressure>0) ? e.pressure : 0.5;
+      const last = state.cur.pts[state.cur.pts.length-1];
+      seg(last, p, state.cur.tool, state.cur.color, pr);
+      state.cur.pts.push({x:p.x, y:p.y, pr});
+      e.preventDefault();
     }
-    function up(e){ state.drawing = false; try{ canvas.releasePointerCapture(e.pointerId); }catch(_){} }
+    function up(e){
+      if(!state.drawing) return;
+      state.drawing = false;
+      if(state.cur && state.cur.pts.length){ state.strokes.push(state.cur); commit(); }
+      state.cur = null;
+      try{ canvas.releasePointerCapture(e.pointerId); }catch(_){}
+    }
 
     canvas.addEventListener('pointerdown', down);
     canvas.addEventListener('pointermove', move);
@@ -263,18 +306,21 @@
     toggle.addEventListener('click', ()=>{
       const show = pad.style.display === 'none';
       pad.style.display = show ? 'block' : 'none';
-      toggle.textContent = show ? '✏️ 收合計算區' : '✏️ 計算區（手寫）';
-      if(show){ setBleed(); requestAnimationFrame(initCanvas); } // 開啟時(版面已完整)量算滿版寬度
+      toggle.textContent = show ? '✏️ 收合計算區' : '✏️ 展開計算區';
+      if(show){ setBleed(); requestAnimationFrame(initCanvas); }
     });
     penBtn.addEventListener('click', ()=>{ state.tool='pen'; penBtn.classList.add('active'); eraBtn.classList.remove('active'); });
     eraBtn.addEventListener('click', ()=>{ state.tool='eraser'; eraBtn.classList.add('active'); penBtn.classList.remove('active'); });
+    undoBtn.addEventListener('click', ()=>{ if(state.hp>0){ state.hp--; state.strokes=state.history[state.hp].slice(); redraw(); updateUR(); } });
+    redoBtn.addEventListener('click', ()=>{ if(state.hp<state.history.length-1){ state.hp++; state.strokes=state.history[state.hp].slice(); redraw(); updateUR(); } });
     swatches.forEach(s=> s.addEventListener('click', ()=>{
       state.color = s.dataset.color; state.tool='pen';
       penBtn.classList.add('active'); eraBtn.classList.remove('active');
       swatches.forEach(o=>o.classList.remove('active')); s.classList.add('active');
     }));
-    clearBtn.addEventListener('click', ()=>{ if(state.ctx){ state.ctx.save(); state.ctx.setTransform(1,0,0,1,0,0); state.ctx.clearRect(0,0,canvas.width,canvas.height); state.ctx.restore(); } });
+    clearBtn.addEventListener('click', ()=>{ initCanvas(); state.strokes=[]; redraw(); commit(); });
 
+    updateUR();
     return wrap;
   }
 
