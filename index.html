@@ -245,8 +245,14 @@
     result.classList.add('show');
   }
 
+  let history = [];               // 近幾份試卷的題目鍵，用來避免重複出題
+  const HISTORY_PAPERS = 4;       // 與最近 4 份(=80題)都不重複
   function newTest(){
-    test = MathGen.genTest();
+    const exclude = new Set();
+    history.slice(-HISTORY_PAPERS).forEach(keys => keys.forEach(k => exclude.add(k)));
+    test = MathGen.genTest(exclude);
+    history.push(test.map(q => q._key || (q.stem + '||' + (q.options||[]).join('|'))));
+    if (history.length > HISTORY_PAPERS + 2) history.shift();
     answers = new Array(test.length).fill(null);
     graded = false;
     document.getElementById('btnSubmit').disabled=false;

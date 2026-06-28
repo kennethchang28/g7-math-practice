@@ -1404,43 +1404,134 @@
   const SYM_GENS = [genSymCount, genSymWhich, genReflectCoord, genSymGrid, genThreeView, genThreeView, genCubeCount];
 
   /* =====================================================================
-     主題派發 / 整份試卷
+     額外的「挑戰級」題型（多步驟 / 應用 / 反向）
      ===================================================================== */
+
+  // 不等式：多步驟應用（折扣+利潤率 / 混合票價），答案以掃描方式由建構保證正確
+  function genIneqWordHard() {
+    const t = choice(['profit', 'tickets']);
+    if (t === 'profit') {
+      const C = choice([200, 300, 400, 500, 600, 800]);
+      const dPct = choice([70, 75, 80, 90]);   // 售價 = 標價的 dPct%
+      const pPct = choice([10, 15, 20, 25]);   // 利潤 ≥ 成本的 pPct%
+      // 條件：dPct/100·x − C ≥ pPct/100·C  ⟺  dPct·x ≥ (100+pPct)·C
+      const ok = (x) => dPct * x >= (100 + pPct) * C;
+      let xmin = 0; while (!ok(xmin)) xmin++;
+      const folded = dPct % 10 === 0 ? (dPct / 10) + ' 折' : (dPct / 10) + ' 折';
+      const stem = '一件商品成本為 ' + C + ' 元。店家打算標價後，以「打 ' + (dPct / 10) + ' 折」（即售價為標價的 ' + dPct + '%）出售。\n若希望每件的利潤「不低於成本的 ' + pPct + '%」，則「標價」至少要訂為多少元？（取整數）';
+      const wrongNoProfit = Math.ceil(C * 100 / dPct);     // 忘了利潤，只求不虧本
+      const res = buildChoices(String(xmin), [String(wrongNoProfit), String(Math.ceil(C * (100 + pPct) / 100)), String(xmin + 1)], numFiller(xmin));
+      return { topic: '不等式', tag: '應用-折扣利潤', stem, svg: null, options: res.options, answer: res.answer,
+        solution: '設標價 x 元。售價 = ' + dPct + '%·x，利潤 = ' + dPct + '%·x − ' + C + '。\n要利潤 ≥ ' + pPct + '%×成本：' + (dPct / 100) + 'x − ' + C + ' ≥ ' + (pPct / 100) + '×' + C + '\n→ ' + (dPct / 100) + 'x ≥ ' + C + '×' + (1 + pPct / 100) + ' = ' + (C * (100 + pPct) / 100) + ' → x ≥ ' + numStr(C * (100 + pPct) / dPct) + '，故標價至少 ' + xmin + ' 元。\n(陷阱：利潤是對「成本」算百分比，且要先還原折扣。)' };
+    }
+    const adult = choice([200, 250, 300]), child = choice([100, 120, 150]);
+    const more = choice([2, 3, 4]);
+    const budget = (adult + child) * choice([6, 8, 10, 12]) + child * more + choice([0, 50, 100]);
+    // a 張成人，學生 = a+more，總費用 = adult·a + child·(a+more) ≤ budget
+    const cost = (a) => adult * a + child * (a + more);
+    let amax = 0; while (cost(amax + 1) <= budget) amax++;
+    const stem = '某展覽成人票每張 ' + adult + ' 元、學生票每張 ' + child + ' 元。\n某團體購買的「學生票比成人票多 ' + more + ' 張」，且總花費不超過 ' + budget + ' 元。\n請問最多可以買幾張「成人票」？';
+    const wrongIgnoreMore = Math.floor(budget / (adult + child));
+    const res = buildChoices(String(amax), [String(wrongIgnoreMore), String(amax + 1), String(amax + more)], numFiller(amax));
+    return { topic: '不等式', tag: '應用-混合購買', stem, svg: null, options: res.options, answer: res.answer,
+      solution: '設成人票 a 張，學生票 = a + ' + more + ' 張。\n總費用 ' + adult + 'a + ' + child + '(a+' + more + ') = ' + (adult + child) + 'a + ' + (child * more) + ' ≤ ' + budget + '\n→ ' + (adult + child) + 'a ≤ ' + (budget - child * more) + ' → a ≤ ' + numStr((budget - child * more) / (adult + child)) + '，最多 ' + amax + ' 張成人票。' };
+  }
+
+  // 三視圖：由「上視圖 + 前視圖」求最少 / 最多方塊（各直行獨立，公式可嚴格證明）
+  function cubeMinMax(model) {
+    const { h, R, C } = model; const f = frontView(model);
+    let mn = 0, mx = 0; const cols = [];
+    for (let c = 0; c < C; c++) {
+      let occ = 0; for (let r = 0; r < R; r++) if (h[r][c] > 0) occ++;
+      if (occ > 0) { cols.push({ c, occ, f: f[c] }); mn += f[c] + occ - 1; mx += occ * f[c]; }
+    }
+    return { min: mn, max: mx, f, cols };
+  }
+  function genCubeMinMax() {
+    let model, mm, guard = 0;
+    do { model = makeStack(); mm = cubeMinMax(model); guard++; }
+    while ((mm.min === mm.max || mm.max > 20 || mm.cols.length < 2) && guard < 100);
+    const askMin = choice([true, false]);
+    const ans = askMin ? mm.min : mm.max;
+    const topDisp = topView(model).slice().reverse();           // 前排畫在最下面
+    const frontDisp = profileToGrid(mm.f, Math.max(...mm.f, 1));
+    const fig = '<div style="display:flex;gap:20px;align-items:flex-end;flex-wrap:wrap">' +
+      '<div style="text-align:center"><div style="font-size:12px;color:#475569;margin-bottom:4px">上視圖（俯視）</div>' + matrixSVG(topDisp) + '</div>' +
+      '<div style="text-align:center"><div style="font-size:12px;color:#475569;margin-bottom:4px">前視圖</div>' + matrixSVG(frontDisp) + '</div></div>';
+    const stem = '某立體由「相同的正方體」堆疊而成（沒有懸空的方塊）。已知它的「上視圖」與「前視圖」如下圖。\n要同時符合這兩個視圖，這個立體「最' + (askMin ? '少' : '多') + '」需要幾個正方體？';
+    const totalOcc = mm.cols.reduce((s, x) => s + x.occ, 0);
+    const sumF = mm.cols.reduce((s, x) => s + x.f, 0);
+    const res = buildChoices(String(ans), [String(askMin ? mm.max : mm.min), String(totalOcc), String(sumF)], numFiller(ans));
+    return { topic: '對稱三視圖', tag: '三視圖-最值方塊', stem, svg: fig, options: res.options, answer: res.answer,
+      solution: '上視圖告訴我們「哪些位置有方塊」（共有方塊的直行）；前視圖給出「每一直行最高疊幾個」。\n' +
+        (askMin
+          ? '最少：每一直行只要讓「其中一疊」達到前視圖的高度，其餘有方塊的位置各放 1 個即可。\n最少 = Σ(該行最高高度 + 其餘方塊位置數) = ' + mm.min + ' 個。'
+          : '最多：每一直行中「每一個有方塊的位置」都疊到前視圖的最高高度。\n最多 = Σ(該行最高高度 × 該行方塊位置數) = ' + mm.max + ' 個。') +
+        '\n(陷阱：兩個視圖無法唯一決定立體，方塊數會落在一個範圍內。)' };
+  }
+
+  /* =====================================================================
+     主題派發 / 整份試卷（加權：難題權重高；並支援「避免與前一份重複」）
+     ===================================================================== */
+  // 每個題型給權重，數字越大越常出現。基礎題權重 1、進階 2、挑戰 3~4。
   const TOPICS = {
-    '不等式': INEQ_GENS,
-    '統計': STAT_GENS,
-    '幾何': GEO_GENS,
-    '對稱三視圖': SYM_GENS
+    '不等式': [[genIneqSolveBasic, 1], [genIneqNumberLine, 1], [genIneqExtremeInt, 2], [genIneqFraction, 2],
+      [genIneqIntCount, 3], [genIneqEquivalent, 3], [genIneqWord, 3], [genIneqParam, 3], [genIneqWordHard, 4]],
+    '統計': [[genMean, 1], [genOutlierConcept, 1], [genMedian, 2], [genMode, 2], [genMissingMean, 2], [genWeighted, 2], [genCombineMean, 2],
+      [genFreqTable, 3], [genChangeOneValue, 3], [genAddDataMedian, 4], [genStatConstraint, 4], [genCombineReverse, 4]],
+    '幾何': [[genVerticalAngle, 1], [genTriangleAngle, 1], [genPolygonAngle, 1], [genSolidCount, 1],
+      [genCompSupp, 2], [genParallelCut, 2], [genCubeNet, 2],
+      [genZigzag, 4], [genPolygonReverse, 4], [genSolidHarder, 4], [genAngleCombined, 4]],
+    '對稱三視圖': [[genSymCount, 1], [genReflectCoord, 2], [genSymWhich, 2], [genCubeCount, 2],
+      [genThreeView, 3], [genSymGrid, 3], [genCubeMinMax, 4]]
   };
   const TOPIC_LABEL = { '不等式': '一元一次不等式', '統計': '統計（平均數·中位數·眾數）', '幾何': '幾何圖形', '對稱三視圖': '線對稱與三視圖' };
 
+  function weightedPick(pool) {
+    const tot = pool.reduce((s, p) => s + p[1], 0);
+    let r = Math.random() * tot;
+    for (const p of pool) { r -= p[1]; if (r < 0) return p[0]; }
+    return pool[pool.length - 1][0];
+  }
+  // 題目唯一識別鍵：用於「避免與前一份重複」與計算題庫多樣性
+  function questionKey(q) { return (q.stem || '') + '||' + (q.options || []).join('|') + '||' + (q.svg || ''); }
+
   function genOne(topic) {
-    const gens = TOPICS[topic];
+    const pool = TOPICS[topic];
     let q, guard = 0;
-    do { q = choice(gens)(); guard++; } while ((!q || !q.options || q.options.length !== 4) && guard < 20);
+    do { q = weightedPick(pool)(); guard++; } while ((!q || !q.options || q.options.length !== 4) && guard < 25);
     q.topicLabel = TOPIC_LABEL[topic];
+    q._key = questionKey(q);
     return q;
   }
 
-  // 一份 20 題，4 主題各 5 題，盡量不重複題型
-  function genTest() {
+  // 一份 20 題，4 主題各 5 題；excludeKeys 內的題目不會再出現（避免與前幾份重複）
+  function genTest(excludeKeys) {
+    const exclude = excludeKeys instanceof Set ? excludeKeys
+      : new Set(Array.isArray(excludeKeys) ? excludeKeys : []);
     const order = ['不等式', '統計', '幾何', '對稱三視圖'];
+    const used = new Set();
     const all = [];
     order.forEach(topic => {
       const seenTags = {};
       let made = 0, guard = 0;
-      while (made < 5 && guard < 200) {
-        const q = genOne(topic);
-        const key = q.tag;
-        if ((seenTags[key] || 0) < 2) { // 同題型最多 2 題
-          seenTags[key] = (seenTags[key] || 0) + 1;
-          all.push(q); made++;
-        }
+      // 主迴圈：避免重複、同題型最多 2 題
+      while (made < 5 && guard < 600) {
         guard++;
+        const q = genOne(topic); const key = q._key;
+        if (exclude.has(key) || used.has(key)) continue;
+        if ((seenTags[q.tag] || 0) >= 2) continue;
+        seenTags[q.tag] = (seenTags[q.tag] || 0) + 1; used.add(key); all.push(q); made++;
       }
-      while (made < 5) { all.push(genOne(topic)); made++; }
+      // 後備：放寬題型限制，但仍避免重複
+      while (made < 5 && guard < 1200) {
+        guard++;
+        const q = genOne(topic); const key = q._key;
+        if (exclude.has(key) || used.has(key)) continue;
+        used.add(key); all.push(q); made++;
+      }
+      while (made < 5) { const q = genOne(topic); all.push(q); made++; } // 極端後備
     });
-    // 交錯排列 (不要同主題連在一起)
     const byTopic = {};
     all.forEach(q => { (byTopic[q.topic] = byTopic[q.topic] || []).push(q); });
     const mixed = [];
@@ -1448,9 +1539,9 @@
     return mixed.map((q, i) => Object.assign(q, { index: i + 1 }));
   }
 
-  const api = { genTest, genOne, TOPICS, TOPIC_LABEL,
+  const api = { genTest, genOne, questionKey, TOPICS, TOPIC_LABEL,
     // 匯出供測試
-    _internal: { solveLinear, satisfy, median, modes, mean, frontView, sideView, topView, makeStack, profileToGrid, gridKey, SHAPE_AXES, buildChoices, numStr, fracStr } };
+    _internal: { solveLinear, satisfy, median, modes, mean, frontView, sideView, topView, makeStack, profileToGrid, gridKey, SHAPE_AXES, buildChoices, numStr, fracStr, cubeMinMax } };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.MathGen = api;

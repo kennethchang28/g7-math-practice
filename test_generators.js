@@ -235,6 +235,58 @@ function checkCubeNetFold() {
   note('core/cubenet', ok, '獨立摺合推導的相對面 ' + JSON.stringify(derived) + ' 與生成器映射 ' + JSON.stringify(expected) + ' 不符', null);
 }
 
+// ---- 三視圖最值方塊：用窮舉(每一直行獨立)獨立驗證 min/max 公式 ----
+function checkCubeMinMaxFormula() {
+  for (let f = 1; f <= 4; f++) for (let occ = 1; occ <= 4; occ++) {
+    let mn = Infinity, mx = -Infinity;
+    const total = Math.pow(f, occ);
+    for (let code = 0; code < total; code++) {
+      let x = code, s = 0, mxh = 0;
+      for (let i = 0; i < occ; i++) { const hgt = (x % f) + 1; x = Math.floor(x / f); s += hgt; if (hgt > mxh) mxh = hgt; }
+      if (mxh !== f) continue; // 該行最高須等於前視圖高度
+      mn = Math.min(mn, s); mx = Math.max(mx, s);
+    }
+    note('core/cubeMinMax', mn === f + occ - 1, `min(occ=${occ},f=${f})=${mn} 期望 ${f + occ - 1}`);
+    note('core/cubeMinMax', mx === occ * f, `max(occ=${occ},f=${f})=${mx} 期望 ${occ * f}`);
+  }
+  for (let i = 0; i < 2000; i++) {
+    const model = I.makeStack(); const mm = I.cubeMinMax(model);
+    const actual = model.h.flat().reduce((a, b) => a + b, 0);
+    note('core/cubeMinMax', mm.min <= actual && actual <= mm.max, `實際 ${actual} 不在 [${mm.min},${mm.max}]`);
+  }
+}
+
+// ---- 「再出一份不重複」：連續兩份(含多份歷史)不得有相同題目 ----
+function checkNoRepeat() {
+  for (let i = 0; i < 400; i++) {
+    const p1 = MG.genTest();
+    const k1 = new Set(p1.map(q => q._key));
+    note('genTest/noRepeat', new Set(p1.map(q => q._key)).size === 20, '單份內出現重複題');
+    const p2 = MG.genTest(k1);
+    let overlap = 0; p2.forEach(q => { if (k1.has(q._key)) overlap++; });
+    note('genTest/noRepeat', overlap === 0, '第2份與第1份重複 ' + overlap + ' 題');
+    // 連續第3份，排除前兩份
+    const hist = new Set([...k1, ...p2.map(q => q._key)]);
+    const p3 = MG.genTest(hist);
+    let ov3 = 0; p3.forEach(q => { if (hist.has(q._key)) ov3++; });
+    note('genTest/noRepeat', ov3 === 0, '第3份與前兩份重複 ' + ov3 + ' 題');
+  }
+}
+
+// ---- 題庫多樣性：相異題數應遠超過 200 ----
+let BANK_REPORT = '';
+function measureBank() {
+  const perTopic = {}; const all = new Set();
+  Object.keys(MG.TOPICS).forEach(topic => {
+    const s = new Set();
+    for (let i = 0; i < 8000; i++) { const k = MG.genOne(topic)._key; s.add(k); all.add(k); }
+    perTopic[topic] = s.size;
+  });
+  BANK_REPORT = '相異題數(各主題 8000 次抽樣)： ' +
+    Object.keys(perTopic).map(t => t + '=' + perTopic[t]).join('、') + '；合計相異 ≥ ' + all.size;
+  note('bank/size', all.size >= 200, '相異題數 ' + all.size + ' < 200');
+}
+
 // ====== 主測試：每題型大量生成做結構檢查 ======
 console.log('— 核心數學函式驗證 —');
 checkStatCore();
@@ -242,6 +294,7 @@ checkIneqCore();
 checkViewCore();
 checkAxes();
 checkCubeNetFold();
+checkCubeMinMaxFormula();
 
 const PER = Number(process.argv[2]) || 3000;
 console.log('— 大量生成結構檢查 (每主題 ' + PER + ' 題) —');
@@ -267,10 +320,16 @@ for (let i = 0; i < 500; i++) {
   test.forEach(structCheck);
 }
 
+console.log('— 「再出一份」不重複檢查 (400 輪 × 連續 3 份) —');
+checkNoRepeat();
+console.log('— 題庫多樣性量測 —');
+measureBank();
+
 // ====== 報表 ======
 console.log('\n========== 結果 ==========');
 const tags = Object.keys(tally).sort();
 tags.forEach(t => { const x = tally[t]; console.log((x.bad ? '✗' : '✓') + ' ' + t.padEnd(28) + ' 檢查 ' + x.n + (x.bad ? '  失敗 ' + x.bad : '')); });
 console.log('--------------------------');
+console.log(BANK_REPORT);
 console.log('總檢查數: ' + checks + '，失敗: ' + fail);
 process.exit(fail ? 1 : 0);
