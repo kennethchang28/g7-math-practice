@@ -197,12 +197,51 @@ function checkAxes() {
   Object.keys(expect).forEach(k => note('core/axes', A[k] === expect[k], k + ' 對稱軸=' + A[k] + ' 期望 ' + expect[k]));
 }
 
+// ---- 展開圖相對面：用「骰子在網格上滾動」獨立模擬摺合，重新推導相對面，不信任生成器的硬編碼 ----
+function checkCubeNetFold() {
+  // 十字展開圖佈局(與 generators.js 一致)：idx -> [row,col]
+  const pos = { 0: [0, 1], 1: [1, 0], 2: [1, 1], 3: [1, 2], 4: [2, 1], 5: [3, 1] };
+  // 骰子六面以 id 1..6 表示，相對面：1-2、3-4、5-6
+  const init = { U: 1, D: 2, N: 3, S: 4, E: 5, W: 6 };
+  const roll = {
+    N: s => ({ U: s.S, D: s.N, N: s.U, S: s.D, E: s.E, W: s.W }),
+    S: s => ({ U: s.N, D: s.S, N: s.D, S: s.U, E: s.E, W: s.W }),
+    E: s => ({ U: s.W, D: s.E, E: s.U, W: s.D, N: s.N, S: s.S }),
+    W: s => ({ U: s.E, D: s.W, W: s.U, E: s.D, N: s.N, S: s.S })
+  };
+  // 從中心 idx2 以 BFS 滾動，記錄每格「貼地(bottom=D)」的面 id
+  const bottom = {}; const state = {}; const seen = new Set();
+  state[2] = init; bottom[2] = init.D; seen.add(2);
+  const queue = [2];
+  while (queue.length) {
+    const cur = queue.shift(); const [r, c] = pos[cur];
+    for (const idx of Object.keys(pos)) {
+      if (seen.has(Number(idx))) continue;
+      const [r2, c2] = pos[idx]; let dir = null;
+      if (c2 === c && r2 === r - 1) dir = 'N';
+      else if (c2 === c && r2 === r + 1) dir = 'S';
+      else if (r2 === r && c2 === c - 1) dir = 'W';
+      else if (r2 === r && c2 === c + 1) dir = 'E';
+      if (dir) { const ns = roll[dir](state[cur]); state[idx] = ns; bottom[idx] = ns.D; seen.add(Number(idx)); queue.push(Number(idx)); }
+    }
+  }
+  note('core/cubenet', Object.keys(bottom).length === 6, '摺合未覆蓋6面', null);
+  const oppId = { 1: 2, 2: 1, 3: 4, 4: 3, 5: 6, 6: 5 };
+  const derived = {};
+  for (let a = 0; a < 6; a++) for (let b = 0; b < 6; b++) if (a !== b && bottom[b] === oppId[bottom[a]]) derived[a] = b;
+  const expected = { 0: 4, 4: 0, 1: 3, 3: 1, 2: 5, 5: 2 }; // 生成器使用的相對面映射
+  let ok = true;
+  for (const k in expected) if (derived[k] !== expected[k]) ok = false;
+  note('core/cubenet', ok, '獨立摺合推導的相對面 ' + JSON.stringify(derived) + ' 與生成器映射 ' + JSON.stringify(expected) + ' 不符', null);
+}
+
 // ====== 主測試：每題型大量生成做結構檢查 ======
 console.log('— 核心數學函式驗證 —');
 checkStatCore();
 checkIneqCore();
 checkViewCore();
 checkAxes();
+checkCubeNetFold();
 
 const PER = Number(process.argv[2]) || 3000;
 console.log('— 大量生成結構檢查 (每主題 ' + PER + ' 題) —');
