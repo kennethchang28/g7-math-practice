@@ -102,6 +102,27 @@
   .timer-val{font-variant-numeric:tabular-nums; letter-spacing:.5px;}
   .time-line{font-size:.95rem; color:var(--muted); margin-top:6px;}
   .time-line b{color:var(--ink);}
+
+  /* 手寫計算區 */
+  .penonly{display:inline-flex; align-items:center; gap:5px; font-size:.82rem; color:var(--muted); user-select:none; cursor:pointer;}
+  .penonly input{width:15px; height:15px; accent-color:var(--brand);}
+  .scratch-wrap{margin-top:12px;}
+  .scratch-toggle{background:#fff; border:1.5px dashed var(--brand); color:var(--brand); border-radius:8px;
+    padding:6px 12px; font-size:.85rem; font-weight:600;}
+  .scratch-toggle:hover{background:var(--brand-soft);}
+  .scratch{margin-top:8px; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:#fff;}
+  .scratch-tools{display:flex; align-items:center; gap:7px; flex-wrap:wrap; padding:7px 9px;
+    background:#f8fafc; border-bottom:1px solid var(--line);}
+  .stool,.sclear{font-size:.8rem; padding:4px 9px; border-radius:7px; border:1px solid var(--line);
+    background:#fff; font-weight:600; color:var(--ink);}
+  .stool.active{background:var(--brand); color:#fff; border-color:var(--brand);}
+  .sclear{margin-left:auto; color:var(--bad); border-color:#fecaca;}
+  .swatch{width:22px; height:22px; border-radius:50%; cursor:pointer; border:2px solid #fff; box-shadow:0 0 0 1px var(--line); padding:0;}
+  .swatch.active{box-shadow:0 0 0 2px var(--brand);}
+  .scratch-canvas{display:block; width:100%; height:220px; touch-action:none; cursor:crosshair;
+    background-color:#fff;
+    background-image:linear-gradient(#eaf0f7 1px, transparent 1px), linear-gradient(90deg,#f3f6fa 1px, transparent 1px);
+    background-size:100% 26px, 26px 100%;}
   footer{text-align:center; color:var(--muted); font-size:.78rem; margin-top:26px;}
 </style>
 </head>
@@ -119,6 +140,7 @@
     <button class="btn-primary" id="btnNew">🔄 出一份新試卷</button>
     <button class="btn-ghost" id="btnSubmit">✅ 交卷批改</button>
     <div class="spacer"></div>
+    <label class="penonly" title="開啟後，手寫計算區只接受觸控筆，手掌或手指碰到不會畫線"><input type="checkbox" id="penOnly"> 僅觸控筆作畫</label>
     <div class="timer" id="timerTop" title="作答時間（超過 45 分鐘會變色提醒）">⏱ <span class="timer-val">00:00</span></div>
     <div class="stat" id="stat">已作答 0 / 20</div>
   </div>
@@ -175,6 +197,85 @@
   function isSvg(s){ return typeof s==='string' && s.trim().startsWith('<svg'); }
   function setOpt(span, str){ if(isSvg(str)) span.innerHTML = str; else span.textContent = str; }
 
+  // ===== 手寫計算區（支援觸控筆/手指/滑鼠，含筆壓）=====
+  let penOnlyMode = false;
+  function buildScratch(){
+    const wrap = document.createElement('div'); wrap.className = 'scratch-wrap';
+    const toggle = document.createElement('button'); toggle.type='button';
+    toggle.className = 'scratch-toggle'; toggle.textContent = '✏️ 計算區（手寫）';
+    const pad = document.createElement('div'); pad.className = 'scratch'; pad.style.display = 'none';
+
+    const tools = document.createElement('div'); tools.className = 'scratch-tools';
+    const penBtn = document.createElement('button'); penBtn.type='button'; penBtn.className='stool active'; penBtn.textContent='✏️ 筆';
+    const eraBtn = document.createElement('button'); eraBtn.type='button'; eraBtn.className='stool'; eraBtn.textContent='🧹 橡皮擦';
+    const clearBtn = document.createElement('button'); clearBtn.type='button'; clearBtn.className='sclear'; clearBtn.textContent='🗑 清除';
+    tools.appendChild(penBtn); tools.appendChild(eraBtn);
+    const colors = ['#1e293b', '#1d4ed8', '#dc2626'];
+    const swatches = colors.map((c, idx)=>{ const s=document.createElement('button'); s.type='button'; s.className='swatch'+(idx===0?' active':''); s.style.background=c; s.dataset.color=c; tools.appendChild(s); return s; });
+    tools.appendChild(clearBtn);
+
+    const canvas = document.createElement('canvas'); canvas.className='scratch-canvas';
+    pad.appendChild(tools); pad.appendChild(canvas);
+    wrap.appendChild(toggle); wrap.appendChild(pad);
+
+    const state = { tool:'pen', color:colors[0], inited:false, ctx:null, drawing:false, last:null };
+
+    function initCanvas(){
+      if(state.inited) return;
+      const cssW = canvas.clientWidth || canvas.offsetWidth || 600;
+      const cssH = 220;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(cssW * dpr);
+      canvas.height = Math.round(cssH * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      state.ctx = ctx; state.inited = true;
+    }
+    function pos(e){ const r = canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+    function down(e){
+      if(penOnlyMode && e.pointerType === 'touch') return;       // 防手掌/手指誤觸
+      initCanvas();
+      state.drawing = true; state.last = pos(e);
+      try{ canvas.setPointerCapture(e.pointerId); }catch(_){}
+      e.preventDefault();
+    }
+    function move(e){
+      if(!state.drawing) return;
+      if(penOnlyMode && e.pointerType === 'touch') return;
+      const p = pos(e); const ctx = state.ctx;
+      const pressure = (e.pressure && e.pressure>0) ? e.pressure : 0.5;
+      if(state.tool === 'eraser'){ ctx.globalCompositeOperation='destination-out'; ctx.lineWidth = 16; }
+      else { ctx.globalCompositeOperation='source-over'; ctx.strokeStyle = state.color; ctx.lineWidth = 1.4 + pressure*3.2; }
+      ctx.beginPath(); ctx.moveTo(state.last.x, state.last.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+      state.last = p; e.preventDefault();
+    }
+    function up(e){ state.drawing = false; try{ canvas.releasePointerCapture(e.pointerId); }catch(_){} }
+
+    canvas.addEventListener('pointerdown', down);
+    canvas.addEventListener('pointermove', move);
+    canvas.addEventListener('pointerup', up);
+    canvas.addEventListener('pointercancel', up);
+    canvas.addEventListener('pointerleave', up);
+
+    toggle.addEventListener('click', ()=>{
+      const show = pad.style.display === 'none';
+      pad.style.display = show ? 'block' : 'none';
+      toggle.textContent = show ? '✏️ 收合計算區' : '✏️ 計算區（手寫）';
+      if(show) requestAnimationFrame(initCanvas);   // 顯示後才量得到寬度
+    });
+    penBtn.addEventListener('click', ()=>{ state.tool='pen'; penBtn.classList.add('active'); eraBtn.classList.remove('active'); });
+    eraBtn.addEventListener('click', ()=>{ state.tool='eraser'; eraBtn.classList.add('active'); penBtn.classList.remove('active'); });
+    swatches.forEach(s=> s.addEventListener('click', ()=>{
+      state.color = s.dataset.color; state.tool='pen';
+      penBtn.classList.add('active'); eraBtn.classList.remove('active');
+      swatches.forEach(o=>o.classList.remove('active')); s.classList.add('active');
+    }));
+    clearBtn.addEventListener('click', ()=>{ if(state.ctx){ state.ctx.save(); state.ctx.setTransform(1,0,0,1,0,0); state.ctx.clearRect(0,0,canvas.width,canvas.height); state.ctx.restore(); } });
+
+    return wrap;
+  }
+
   function render(){
     quiz.innerHTML = '';
     result.classList.remove('show');
@@ -200,6 +301,8 @@
         opts.appendChild(o);
       });
       card.appendChild(opts);
+
+      card.appendChild(buildScratch());
 
       const sol=document.createElement('div'); sol.className='sol';
       sol.innerHTML='<span class="badge n">詳解</span><div class="txt"></div>';
@@ -303,6 +406,9 @@
     window.scrollTo({top:0, behavior:'smooth'});
   }
   window.__newTest = newTest;
+
+  const penOnlyBox = document.getElementById('penOnly');
+  if(penOnlyBox) penOnlyBox.addEventListener('change', ()=>{ penOnlyMode = penOnlyBox.checked; });
 
   document.getElementById('btnNew').addEventListener('click', newTest);
   document.getElementById('btnNew2').addEventListener('click', newTest);
